@@ -1,0 +1,57 @@
+deployment:
+  role: control_plane
+
+  role_control_plane:
+    config_provider: etcd
+
+  admin:
+    allow_admin:
+      - 0.0.0.0/0
+      # - 127.0.0.1
+      # - 10.0.0.0/8
+
+    admin_key:
+      - name: admin
+        key: 13579@mokchhedul
+        role: admin
+
+  etcd:
+    host:
+      - "http://etcd1:2379"
+      - "http://etcd2:2379"
+      - "http://etcd3:2379"
+    prefix: "/apisix"
+    timeout: 30
+
+plugins:
+# AI Gateway Core Plugins
+  - ai-proxy
+  - ai-proxy-multi
+  - ai-prompt-guard
+  - ai-prompt-decorator
+  - ai-rate-limiting
+  # Security, Traffic & Observability
+  - key-auth
+  - cors
+  - gzip
+  - limit-conn
+  - limit-count
+  - limit-req
+  - proxy-cache
+  - proxy-rewrite
+  - response-rewrite
+  - forward-auth
+  - request-id
+  - prometheus
+
+  
+# nginx_config:
+#   http_configuration_snippet: |
+#     lua_shared_dict prometheus-cache 10m;
+
+
+
+  # admin_api_mtls:
+  #   admin_ssl_ca_cert: "/data/certs/mtls_ca.crt"
+  #   admin_ssl_cert: "/data/certs/mtls_server.crt"
+  #   admin_ssl_cert_key: "/data/certs/mtls_server.key"

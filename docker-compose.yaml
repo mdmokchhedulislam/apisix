@@ -1,0 +1,339 @@
+# version: "3.8"
+
+services:
+
+  # =========================================================
+  # ETCD NODE 1
+  # =========================================================
+  etcd1:
+    image: quay.io/coreos/etcd:v3.5.9
+    container_name: etcd1
+    restart: unless-stopped
+
+    command: >
+      /usr/local/bin/etcd
+      --name etcd1
+      --data-dir /etcd-data
+      --listen-client-urls http://0.0.0.0:2379
+      --advertise-client-urls http://etcd1:2379
+      --listen-peer-urls http://0.0.0.0:2380
+      --initial-advertise-peer-urls http://etcd1:2380
+      --initial-cluster
+      etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      --initial-cluster-state new
+      --initial-cluster-token etcd-cluster
+
+    volumes:
+      - type: volume
+        source: etcd1-data
+        target: /etcd-data
+
+    networks:
+      - apisix-net
+
+  # =========================================================
+  # ETCD NODE 2
+  # =========================================================
+  etcd2:
+    image: quay.io/coreos/etcd:v3.5.9
+    container_name: etcd2
+    restart: unless-stopped
+
+    command: >
+      /usr/local/bin/etcd
+      --name etcd2
+      --data-dir /etcd-data
+      --listen-client-urls http://0.0.0.0:2379
+      --advertise-client-urls http://etcd2:2379
+      --listen-peer-urls http://0.0.0.0:2380
+      --initial-advertise-peer-urls http://etcd2:2380
+      --initial-cluster
+      etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      --initial-cluster-state new
+      --initial-cluster-token etcd-cluster
+
+    volumes:
+      - type: volume
+        source: etcd2-data
+        target: /etcd-data
+
+    networks:
+      - apisix-net
+
+  # =========================================================
+  # ETCD NODE 3
+  # =========================================================
+  etcd3:
+    image: quay.io/coreos/etcd:v3.5.9
+    container_name: etcd3
+    restart: unless-stopped
+
+    command: >
+      /usr/local/bin/etcd
+      --name etcd3
+      --data-dir /etcd-data
+      --listen-client-urls http://0.0.0.0:2379
+      --advertise-client-urls http://etcd3:2379
+      --listen-peer-urls http://0.0.0.0:2380
+      --initial-advertise-peer-urls http://etcd3:2380
+      --initial-cluster
+      etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      --initial-cluster-state new
+      --initial-cluster-token etcd-cluster
+
+    volumes:
+      - type: volume
+        source: etcd3-data
+        target: /etcd-data
+
+    networks:
+      - apisix-net
+
+
+
+
+  # CONTROL PLANE (HA)
+
+
+  control-plane-1:
+    image: apache/apisix:latest
+    networks:
+    - apisix-net
+    environment:
+       - APISIX_ETCD_ENDPOINTS=http://etcd1:2379,http://etcd2:2379,http://etcd3:2379
+    volumes:
+       - ./conf/control-plane.yaml:/usr/local/apisix/conf/config.yaml
+    depends_on:
+      - etcd1
+      - etcd2
+      - etcd3
+    ports:
+      - "9180:9180"  # Admin API
+
+
+  #  DATA PLANES
+  data-plane-1:
+    image: apache/apisix:latest
+    networks:
+    - apisix-net
+    environment:
+       - APISIX_ETCD_ENDPOINTS=http://etcd1:2379,http://etcd2:2379,http://etcd3:2379
+    volumes:
+      - ./conf/data-plane.yaml:/usr/local/apisix/conf/config.yaml
+    depends_on:
+      - etcd1
+      - etcd2
+      - etcd3
+    ports:
+      - "9080:9080"
+      - "9443:9443"
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    environment:
+      - PORT=3000
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/ecommerce_auth}
+      - JWT_SECRET=${JWT_SECRET:-change_this_secret_key}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - etcd1
+    networks:
+      - apisix-net
+    restart: unless-stopped
+
+  product-service:
+    build: ./product-service
+    container_name: product-service
+    environment:
+      - PORT=3001
+    depends_on:
+      - etcd1
+    networks:
+      - apisix-net
+    restart: unless-stopped
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - apisix-net
+    restart: unless-stopped
+    
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+    - apisix-net
+    restart: unless-stopped
+
+
+  
+# =========================================================
+networks:
+  apisix-net:
+    driver: bridge
+
+# =========================================================
+# VOLUMES
+# =========================================================
+volumes:
+  etcd1-data:
+  etcd2-data:
+  etcd3-data:
+  mongo_data:
+  ollama_data:
+  
+
+
+
+
+
+
+# services:
+#   # =========================================================
+#   # ETCD NODE 1
+#   # =========================================================
+#   etcd1:
+#     image: quay.io/coreos/etcd:v3.5.9
+#     container_name: etcd1
+#     restart: unless-stopped
+#     command: >
+#       /usr/local/bin/etcd
+#       --name etcd1
+#       --data-dir /etcd-data
+#       --listen-client-urls http://0.0.0.0:2379
+#       --advertise-client-urls http://etcd1:2379
+#       --listen-peer-urls http://0.0.0.0:2380
+#       --initial-advertise-peer-urls http://etcd1:2380
+#       --initial-cluster etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+#       --initial-cluster-state new
+#       --initial-cluster-token etcd-cluster
+#     volumes:
+#       - etcd1-data:/etcd-data
+#     networks:
+#       - apisix-net
+#     healthcheck:
+#       test: ["CMD", "etcdctl", "endpoint", "health"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   # =========================================================
+#   # ETCD NODE 2
+#   # =========================================================
+#   etcd2:
+#     image: quay.io/coreos/etcd:v3.5.9
+#     container_name: etcd2
+#     restart: unless-stopped
+#     command: >
+#       /usr/local/bin/etcd
+#       --name etcd2
+#       --data-dir /etcd-data
+#       --listen-client-urls http://0.0.0.0:2379
+#       --advertise-client-urls http://etcd2:2379
+#       --listen-peer-urls http://0.0.0.0:2380
+#       --initial-advertise-peer-urls http://etcd2:2380
+#       --initial-cluster etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+#       --initial-cluster-state new
+#       --initial-cluster-token etcd-cluster
+#     volumes:
+#       - etcd2-data:/etcd-data
+#     networks:
+#       - apisix-net
+#     healthcheck:
+#       test: ["CMD", "etcdctl", "endpoint", "health"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   # =========================================================
+#   # ETCD NODE 3
+#   # =========================================================
+#   etcd3:
+#     image: quay.io/coreos/etcd:v3.5.9
+#     container_name: etcd3
+#     restart: unless-stopped
+#     command: >
+#       /usr/local/bin/etcd
+#       --name etcd3
+#       --data-dir /etcd-data
+#       --listen-client-urls http://0.0.0.0:2379
+#       --advertise-client-urls http://etcd3:2379
+#       --listen-peer-urls http://0.0.0.0:2380
+#       --initial-advertise-peer-urls http://etcd3:2380
+#       --initial-cluster etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+#       --initial-cluster-state new
+#       --initial-cluster-token etcd-cluster
+#     volumes:
+#       - etcd3-data:/etcd-data
+#     networks:
+#       - apisix-net
+#     healthcheck:
+#       test: ["CMD", "etcdctl", "endpoint", "health"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   # =========================================================
+#   # CONTROL PLANE
+#   # =========================================================
+#   control-plane-1:
+#     image: apache/apisix:latest
+#     container_name: apisix-control-plane-1
+#     restart: unless-stopped
+#     networks:
+#       - apisix-net
+#     environment:
+#       - APISIX_ETCD_ENDPOINTS=http://etcd1:2379,http://etcd2:2379,http://etcd3:2379
+#     volumes:
+#       - ./conf/control-plane.yaml:/usr/local/apisix/conf/config.yaml:ro
+#     depends_on:
+#       etcd1:
+#         condition: service_healthy
+#       etcd2:
+#         condition: service_healthy
+#       etcd3:
+#         condition: service_healthy
+#     ports:
+#       - "127.0.0.1:9180:9180" # Security: Admin API শুধু লোকালহোস্টে বাইন্ড করা নিরাপদ
+
+#   # =========================================================
+#   # DATA PLANE
+#   # =========================================================
+#   data-plane-1:
+#     image: apache/apisix:latest
+#     container_name: apisix-data-plane-1
+#     restart: unless-stopped
+#     networks:
+#       - apisix-net
+#     environment:
+#       - APISIX_ETCD_ENDPOINTS=http://etcd1:2379,http://etcd2:2379,http://etcd3:2379
+#     volumes:
+#       - ./conf/data-plane.yaml:/usr/local/apisix/conf/config.yaml:ro
+#     depends_on:
+#       etcd1:
+#         condition: service_healthy
+#       etcd2:
+#         condition: service_healthy
+#       etcd3:
+#         condition: service_healthy
+#     ports:
+#       - "9080:9080"
+#       - "9443:9443"
+
+# networks:
+#   apisix-net:
+#     driver: bridge
+
+# volumes:
+#   etcd1-data:
+#   etcd2-data:
+#   etcd3-data:
